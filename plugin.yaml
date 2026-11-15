@@ -1,0 +1,92 @@
+manifest_version: 2
+name: cortex
+label: Cortex
+version: 0.1.0
+kind: standalone
+description: >-
+  System 1 event triage, dynamic hot-reloaded watchers (log_tail, http_poll,
+  webhook_route, command_poll), and escalation routing to herald.
+author: Daniel Colson
+license: MIT
+
+provides_tools:
+  - cortex_manage_watchers
+  - cortex_manage_rules
+  - cortex_query_log
+  - cortex_test_event
+
+provides_hooks:
+  - on_session_start
+  - pre_gateway_dispatch
+
+optional_env:
+  CORTEX_DECISION_API_KEY:
+    description: API key for the System 1 decision backend (e.g. TypeSafe SystemOne / Jev).
+    secret: true
+  TYPESAFE_KEY:
+    description: Fallback TypeSafe API key if CORTEX_DECISION_API_KEY is unset.
+    secret: true
+
+config_schema:
+  daemon_profile:
+    type: string
+    default: herald
+    description: Only this Hermes profile runs background watchers and the HTTP ingestor.
+  shared_state_dir:
+    type: string
+    default: ""
+    description: Shared directory for cortex.db and probes/ across profiles (default ~/.hermes/cortex).
+  listen_host:
+    type: string
+    default: 127.0.0.1
+    description: Bind host for the Cortex HTTP webhook ingestor.
+  listen_port:
+    type: integer
+    default: 8655
+    description: Bind port for the Cortex HTTP webhook ingestor.
+  decision_backend:
+    type: string
+    default: http_decision
+    description: "System 1 backend: http_decision, local_head, or llm_fallback."
+  decision_url:
+    type: string
+    default: https://api.typesafe.ai/v1/systemone
+    description: Endpoint URL for http_decision or local_head.
+  decision_model:
+    type: string
+    default: jev-latest
+    description: Model identifier passed to the System 1 decision endpoint.
+  decision_format:
+    type: string
+    default: systemone
+    description: "Request/response adapter: systemone, openai_choice, or generic."
+  decision_timeout_s:
+    type: number
+    default: 2.0
+    description: Timeout in seconds for System 1 decision requests.
+  allowed_log_roots:
+    type: array
+    default:
+      - /var/log
+      - /opt/data/logs
+    description: Allowed directory prefixes for log_tail watchers (plus ~/.hermes/logs).
+  allow_arbitrary_log_paths:
+    type: boolean
+    default: false
+    description: Allow log_tail outside allowed_log_roots when explicitly enabled.
+  escalation_origins:
+    type: array
+    default: []
+    description: Ordered fallback SessionSource origin dicts for escalation delivery.
+  kanban_fallback:
+    type: boolean
+    default: true
+    description: Create a ready Kanban task if no active gateway session accepts inject_message.
+  kanban_assignee:
+    type: string
+    default: herald
+    description: Default assignee for Kanban fallback cards.
+  reconcile_interval_s:
+    type: number
+    default: 1.5
+    description: How often WatcherManager checks SQLite for watcher updates.

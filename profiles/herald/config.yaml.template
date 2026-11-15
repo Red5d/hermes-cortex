@@ -1,0 +1,45 @@
+# Herald profile config snippet — merge into ~/.hermes/profiles/herald/config.yaml
+# Replace model/provider with your fast/low-cost System 2 model.
+model:
+  provider: openrouter
+  default: google/gemini-2.5-flash-lite
+
+# Keep Herald's tool surface lean for fast TTFT (requires cortex + advanced-delegation installed).
+toolsets:
+  - memory
+  - delegation
+  - kanban
+  - session_search
+  - cortex
+
+delegation:
+  backend: profile_routes
+  backends:
+    profile_routes:
+      default: analyst
+      profiles:
+        - name: analyst
+          description: "Mid-tier worker for routine coding, log/system investigation, probe authoring, and cortex watcher/rule updates."
+        - name: thinker
+          description: "Deep reasoning model for complex architecture, hard root-cause debugging, and high-stakes decisions."
+
+plugins:
+  entries:
+    cortex:
+      enabled: true
+      allow_gateway_injection: true
+      settings:
+        daemon_profile: herald
+        shared_state_dir: ~/.hermes/cortex
+        listen_host: 127.0.0.1
+        listen_port: 8655
+        decision_backend: http_decision
+        decision_url: https://api.typesafe.ai/v1/systemone
+        decision_model: jev-latest
+        decision_format: systemone
+        decision_timeout_s: 2.0
+        allowed_log_roots:
+          - /var/log
+          - /opt/data/logs
+        kanban_fallback: true
+        kanban_assignee: herald

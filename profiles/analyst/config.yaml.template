@@ -1,0 +1,20 @@
+# Analyst profile config snippet — merge into ~/.hermes/profiles/analyst/config.yaml
+model:
+  provider: openrouter
+  default: anthropic/claude-sonnet-4.5
+
+plugins:
+  entries:
+    cortex:
+      enabled: true
+      settings:
+        daemon_profile: herald
+        shared_state_dir: ~/.hermes/cortex
+        decision_backend: http_decision
+        decision_url: https://api.typesafe.ai/v1/systemone
+        decision_model: jev-latest
+        decision_format: systemone
+        decision_timeout_s: 2.0
+        allowed_log_roots:
+          - /var/log
+          - /opt/data/logs
