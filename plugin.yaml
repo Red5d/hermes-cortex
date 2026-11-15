@@ -59,7 +59,7 @@ config_schema:
   decision_format:
     type: string
     default: systemone
-    description: "Request/response adapter: systemone, openai_choice, or generic."
+    description: "Request/response adapter: systemone, openrouter_decisions, openai_choice, or generic."
   decision_timeout_s:
     type: number
     default: 2.0

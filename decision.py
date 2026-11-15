@@ -146,7 +146,38 @@ class DecisionClient:
                 headers.setdefault("Authorization", f"Bearer {token}")
         return headers
 
-    def _build_http_payload(self, prompt: str, choices: Sequence[str]) -> dict[str, Any]:
+    def _build_http_payload(
+        self,
+        prompt: str,
+        choices: Sequence[str],
+        *,
+        state: Optional[str] = None,
+        instructions: Optional[str] = None,
+        criteria: Optional[Mapping[str, str]] = None,
+    ) -> dict[str, Any]:
+        if self.request_format == "openrouter_decisions":
+            crit = dict(criteria or {})
+            if not crit:
+                default_descriptions = {
+                    "discard": "Benign or routine event; does not meet the rule condition and can be ignored.",
+                    "log": "Noteworthy event worth logging for later review, but not urgent.",
+                    "escalate": "Matches the rule condition and requires immediate attention.",
+                }
+                crit = {
+                    c: default_descriptions.get(c, f"Select '{c}'.")
+                    for c in choices
+                }
+            return {
+                "model": self.model,
+                "state": state if state is not None else prompt,
+                "questions": {
+                    "triage": {
+                        "type": "choice",
+                        "instructions": instructions or "Classify this event into the best matching decision.",
+                        "criteria": crit,
+                    }
+                },
+            }
         if self.request_format == "openai_choice":
             return {
                 "model": self.model,
@@ -177,6 +208,30 @@ class DecisionClient:
             body: Any = resp.json()
         except ValueError:
             body = resp.text
+
+        # OpenRouter Decisions API envelope: {"answers": {"triage": {"type": "choice", "choice": "..."}}}
+        if isinstance(body, Mapping) and isinstance(body.get("answers"), Mapping):
+            ans = body["answers"].get("triage")
+            if isinstance(ans, Mapping):
+                if ans.get("type") == "refusal":
+                    return DecisionResult(
+                        choice=default,
+                        raw=body,
+                        latency_ms=elapsed_ms,
+                        fallback_used=True,
+                        error="provider_refusal",
+                    )
+                matched = normalize_choice(ans.get("choice"), choices)
+                if matched is None:
+                    return DecisionResult(
+                        choice=default,
+                        raw=body,
+                        latency_ms=elapsed_ms,
+                        fallback_used=True,
+                        error="unmatched_or_noul_decision",
+                    )
+                return DecisionResult(choice=matched, raw=body, latency_ms=elapsed_ms, fallback_used=False)
+
         matched = normalize_choice(body, choices)
         if matched is None:
             return DecisionResult(
@@ -195,6 +250,9 @@ class DecisionClient:
         *,
         default: str,
         timeout_s: Optional[float] = None,
+        state: Optional[str] = None,
+        instructions: Optional[str] = None,
+        criteria: Optional[Mapping[str, str]] = None,
     ) -> DecisionResult:
         t0 = time.perf_counter()
         eff_timeout = self.timeout_s if timeout_s is None else max(0.1, float(timeout_s))
@@ -265,7 +323,9 @@ class DecisionClient:
                 self._async_client = httpx.AsyncClient()
             resp = await self._async_client.post(
                 self.url,
-                json=self._build_http_payload(prompt, choices),
+                json=self._build_http_payload(
+                    prompt, choices, state=state, instructions=instructions, criteria=criteria
+                ),
                 headers=self._headers(),
                 timeout=eff_timeout,
             )
@@ -288,6 +348,9 @@ class DecisionClient:
         *,
         default: str,
         timeout_s: Optional[float] = None,
+        state: Optional[str] = None,
+        instructions: Optional[str] = None,
+        criteria: Optional[Mapping[str, str]] = None,
     ) -> DecisionResult:
         t0 = time.perf_counter()
         eff_timeout = self.timeout_s if timeout_s is None else max(0.1, float(timeout_s))
@@ -356,7 +419,9 @@ class DecisionClient:
             with httpx.Client(timeout=eff_timeout) as client:
                 resp = client.post(
                     self.url,
-                    json=self._build_http_payload(prompt, choices),
+                    json=self._build_http_payload(
+                        prompt, choices, state=state, instructions=instructions, criteria=criteria
+                    ),
                     headers=self._headers(),
                 )
                 elapsed_ms = (time.perf_counter() - t0) * 1000.0

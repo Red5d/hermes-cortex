@@ -72,13 +72,13 @@ hermes -p herald plugins install https://github.com/Red5d/hermes-cortex --enable
    ```
 2. **System 1 Decision Backend & API Key:**
    - **TypeSafe SystemOne (default):** Add `CORTEX_DECISION_API_KEY=<key>` (or `TYPESAFE_KEY=<key>`) to `~/.hermes/profiles/herald/.env` (and `analyst/.env` if `analyst` will run `cortex_test_event`).
-   - **OpenRouter (`openai_choice` format):**
+   - **OpenRouter Decisions API (`openrouter_decisions` format):**
      ```bash
      for prof in herald analyst; do
        hermes -p "$prof" config set plugins.entries.cortex.settings.decision_backend http_decision
-       hermes -p "$prof" config set plugins.entries.cortex.settings.decision_format openai_choice
-       hermes -p "$prof" config set plugins.entries.cortex.settings.decision_url https://openrouter.ai/api/v1/chat/completions
-       hermes -p "$prof" config set plugins.entries.cortex.settings.decision_model "<openrouter-model-id>"
+       hermes -p "$prof" config set plugins.entries.cortex.settings.decision_format openrouter_decisions
+       hermes -p "$prof" config set plugins.entries.cortex.settings.decision_url https://openrouter.ai/api/alpha/decisions
+       hermes -p "$prof" config set plugins.entries.cortex.settings.decision_model "~typesafe/jev-latest"
      done
      ```
      And set `CORTEX_DECISION_API_KEY=<openrouter-key>` in `herald/.env` and `analyst/.env`.

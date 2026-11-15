@@ -98,6 +98,58 @@ class TestDecisionClient(unittest.TestCase):
 
         asyncio.run(run())
 
+    def test_openrouter_decisions_payload_and_response(self) -> None:
+        captured: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = request.content.decode("utf-8")
+            return httpx.Response(
+                200,
+                json={
+                    "id": "gen-dec-123",
+                    "model": "typesafe/jev-1.14",
+                    "answers": {
+                        "triage": {
+                            "type": "choice",
+                            "choice": "escalate",
+                            "confidence": 0.96,
+                        }
+                    },
+                },
+            )
+
+        client = DecisionClient(
+            backend="http_decision",
+            url="https://openrouter.ai/api/alpha/decisions",
+            model="~typesafe/jev-latest",
+            request_format="openrouter_decisions",
+        )
+        client._async_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        async def run() -> None:
+            try:
+                res = await client.decide(
+                    "prompt",
+                    ("discard", "log", "escalate"),
+                    default="log",
+                    state="HTTP 502 spike on /api",
+                    instructions="Escalate on 502 spikes",
+                )
+                self.assertFalse(res.fallback_used)
+                self.assertEqual(res.choice, "escalate")
+                import json as _json
+
+                sent = _json.loads(captured["body"])
+                self.assertEqual(sent["model"], "~typesafe/jev-latest")
+                self.assertEqual(sent["state"], "HTTP 502 spike on /api")
+                self.assertEqual(sent["questions"]["triage"]["type"], "choice")
+                self.assertEqual(sent["questions"]["triage"]["instructions"], "Escalate on 502 spikes")
+                self.assertEqual(set(sent["questions"]["triage"]["criteria"].keys()), {"discard", "log", "escalate"})
+            finally:
+                await client.aclose()
+
+        asyncio.run(run())
+
     def test_local_head_sync(self) -> None:
         client = DecisionClient(
             backend="local_head",

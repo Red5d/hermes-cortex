@@ -217,7 +217,11 @@ async def evaluate_event(
             choices=TRIAGE_CHOICES,
         )
         res: DecisionResult = await decision_client.decide(
-            prompt, TRIAGE_CHOICES, default=default_action
+            prompt,
+            TRIAGE_CHOICES,
+            default=default_action,
+            state=f"Source: {event.source}\n<event_data>\n{text[:4000]}\n</event_data>",
+            instructions=f"Rule '{rule.name}': {rule.condition}",
         )
         evals.append(
             RuleEvaluation(
@@ -286,7 +290,11 @@ def evaluate_event_sync(
             choices=TRIAGE_CHOICES,
         )
         res: DecisionResult = decision_client.decide_sync(
-            prompt, TRIAGE_CHOICES, default=default_action
+            prompt,
+            TRIAGE_CHOICES,
+            default=default_action,
+            state=f"Source: {event.source}\n<event_data>\n{text[:4000]}\n</event_data>",
+            instructions=f"Rule '{rule.name}': {rule.condition}",
         )
         evals.append(
             RuleEvaluation(
