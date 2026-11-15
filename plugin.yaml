@@ -69,7 +69,7 @@ config_schema:
     default:
       - /var/log
       - /opt/data/logs
-    description: Allowed directory prefixes for log_tail watchers (plus ~/.hermes/logs).
+    description: Allowed directory prefixes for log_tail watchers (plus the base ~/.hermes/logs and active profile logs directories).
   allow_arbitrary_log_paths:
     type: boolean
     default: false

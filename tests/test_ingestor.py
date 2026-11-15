@@ -69,6 +69,15 @@ class TestWebhookIngestor(unittest.TestCase):
                     self.assertEqual(len(received), 1)
                     self.assertEqual(received[0].source, "beszel")
                     self.assertEqual(received[0].payload, {"cpu": 99})
+
+                    # Fail-closed when secret_env is configured but unset
+                    self.store.upsert_watcher(
+                        watcher_id="w_unset",
+                        watcher_type="webhook_route",
+                        config={"route_name": "unset_secret", "source": "s2", "secret_env": "MISSING_SECRET"},
+                    )
+                    denied = await client.post(f"{base}/ingest/unset_secret", json={"msg": "hi"})
+                    self.assertEqual(denied.status_code, 401)
             finally:
                 await ingestor.stop()
 

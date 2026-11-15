@@ -151,7 +151,7 @@ class DecisionClient:
             return {
                 "model": self.model,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 8,
+                "max_tokens": 16,
                 "temperature": 0,
             }
         # Default "systemone" / "generic" System 1 payload
@@ -164,7 +164,15 @@ class DecisionClient:
     def _parse_http_response(
         self, resp: httpx.Response, choices: Sequence[str], default: str, elapsed_ms: float
     ) -> DecisionResult:
-        resp.raise_for_status()
+        if resp.is_error:
+            body_snippet = (resp.text or "").strip()[:500]
+            return DecisionResult(
+                choice=default,
+                raw=body_snippet or None,
+                latency_ms=elapsed_ms,
+                fallback_used=True,
+                error=f"HTTP {resp.status_code}: {body_snippet}" if body_snippet else f"HTTP {resp.status_code}",
+            )
         try:
             body: Any = resp.json()
         except ValueError:

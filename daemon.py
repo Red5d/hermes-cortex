@@ -35,7 +35,10 @@ def _spawn_daemon_thread(target: Callable[[], None], *, name: str) -> threading.
     try:
         from agent.memory_provider import spawn_context_thread
 
-        return spawn_context_thread(target, name=name, daemon=True)
+        t = spawn_context_thread(target, name=name, daemon=True)
+        if not t.is_alive():
+            t.start()
+        return t
     except Exception:
         t = threading.Thread(target=target, name=name, daemon=True)
         t.start()
@@ -76,6 +79,7 @@ class CortexRuntime:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._ready = threading.Event()
+        self._start_error: Optional[BaseException] = None
         self._watcher_manager: Optional[WatcherManager] = None
         self._ingestor: Optional[WebhookIngestor] = None
         self._stopped = False
@@ -118,15 +122,24 @@ class CortexRuntime:
             self._lock_fh = None
 
     def start(self) -> bool:
-        if self._thread is not None:
+        if self._thread is not None and self._thread.is_alive():
             return True
         if not self._acquire_lock():
             logger.info("Cortex daemon lock already held by another process; running tools-only.")
             return False
         self._stopped = False
+        self._start_error = None
         self._ready.clear()
         self._thread = _spawn_daemon_thread(self._thread_main, name="cortex:daemon")
-        self._ready.wait(timeout=5.0)
+        ready = self._ready.wait(timeout=5.0)
+        if not ready or self._start_error is not None or self._thread is None or not self._thread.is_alive():
+            logger.error(
+                "Cortex daemon failed to start (ready=%s, error=%r)",
+                ready,
+                self._start_error,
+            )
+            self.stop()
+            return False
         return True
 
     def notify_watchers_changed(self) -> None:
@@ -134,7 +147,7 @@ class CortexRuntime:
             self._loop.call_soon_threadsafe(self._watcher_manager.trigger_reconcile)
 
     def stop(self) -> None:
-        if self._stopped:
+        if self._stopped and self._lock_fh is None and self._thread is None:
             return
         self._stopped = True
         loop = self._loop
@@ -142,9 +155,12 @@ class CortexRuntime:
             fut = asyncio.run_coroutine_threadsafe(self._async_stop(), loop)
             try:
                 fut.result(timeout=5.0)
-            except Exception:
+            except Exception as exc:
+                logger.debug("Cortex _async_stop timeout/error during stop(): %s", exc)
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except RuntimeError:
                 pass
-            loop.call_soon_threadsafe(loop.stop)
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=5.0)
         self._thread = None
@@ -158,16 +174,19 @@ class CortexRuntime:
             loop.run_until_complete(self._async_start())
             self._ready.set()
             loop.run_forever()
-        except Exception:
+        except BaseException as exc:
+            self._start_error = exc
             logger.exception("Cortex daemon loop crashed")
             self._ready.set()
         finally:
             try:
                 loop.run_until_complete(self._async_stop())
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Cortex _async_stop cleanup error: %s", exc)
             loop.close()
             self._loop = None
+            self._thread = None
+            self._release_lock()
 
     async def _async_start(self) -> None:
         self.probes_dir.mkdir(parents=True, exist_ok=True)
@@ -251,20 +270,35 @@ class CortexRuntime:
             return
         assignee = "analyst" if outcome.auto_investigate else self.kanban_assignee
         title = f"[Cortex] {outcome.severity.upper()}: {outcome.winning_rule_name} ({outcome.source})"
+        env = dict(os.environ)
+        try:
+            from hermes_constants import get_process_hermes_home
+
+            env["HERMES_HOME"] = str(get_process_hermes_home())
+        except Exception:
+            pass
         try:
             proc = await asyncio.create_subprocess_exec(
                 hermes_bin,
                 "kanban",
                 "create",
-                "--title",
                 title[:120],
                 "--assignee",
                 assignee,
                 "--body",
                 alert_text,
+                env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            await asyncio.wait_for(proc.communicate(), timeout=10.0)
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+            if proc.returncode != 0:
+                stderr = stderr_b.decode("utf-8", errors="replace").strip()
+                stdout = stdout_b.decode("utf-8", errors="replace").strip()
+                logger.warning(
+                    "Kanban fallback exited %s: %s",
+                    proc.returncode,
+                    (stderr or stdout)[:500],
+                )
         except Exception as exc:
             logger.warning("Kanban fallback creation failed: %s", exc)

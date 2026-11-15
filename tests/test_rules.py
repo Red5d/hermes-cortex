@@ -101,6 +101,25 @@ class TestRulesTriage(unittest.TestCase):
         out2 = asyncio.run(evaluate_event(CortexEvent(source="api", payload="500", ts=110.0), self.store, client))
         self.assertEqual(out2.action, "discard")
 
+    def test_force_escalate_regex_not_suppressed_by_cooldown(self) -> None:
+        self.store.upsert_rule(
+            rule_id="r_oom",
+            name="OOM",
+            source="syslog",
+            condition="OOM",
+            severity="high",
+            cooldown_seconds=300,
+            force_escalate_regex=r"Out of memory",
+        )
+        client = DecisionClient(backend="local_head", local_handler=lambda _p, _c: "log")
+        # Non-critical event triggers cooldown
+        out1 = asyncio.run(evaluate_event(CortexEvent(source="syslog", payload="minor warn", ts=100.0), self.store, client))
+        self.assertEqual(out1.action, "log")
+        # Critical force_escalate_regex still escalates immediately despite active cooldown
+        out2 = asyncio.run(evaluate_event(CortexEvent(source="syslog", payload="Out of memory: Killed", ts=110.0), self.store, client))
+        self.assertEqual(out2.action, "escalate")
+        self.assertEqual(out2.via, "force_escalate_regex")
+
 
 if __name__ == "__main__":
     unittest.main()

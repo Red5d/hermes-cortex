@@ -64,6 +64,35 @@ class TestDecisionClient(unittest.TestCase):
                 err = await client.decide("TRIGGER_ERR", ("discard", "log", "escalate"), default="escalate")
                 self.assertEqual(err.choice, "escalate")
                 self.assertTrue(err.fallback_used)
+                self.assertIn("HTTP 503: unavailable", err.error or "")
+            finally:
+                await client.aclose()
+
+        asyncio.run(run())
+
+    def test_openai_choice_payload_and_400_body_propagated(self) -> None:
+        captured: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = request.content.decode("utf-8")
+            return httpx.Response(400, json={"error": {"message": "invalid model slug"}})
+
+        client = DecisionClient(
+            backend="http_decision",
+            url="https://openrouter.ai/api/v1/chat/completions",
+            model="typesafe/jev-latest",
+            request_format="openai_choice",
+        )
+        client._async_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        async def run() -> None:
+            try:
+                res = await client.decide("hello", ("discard", "log", "escalate"), default="log")
+                self.assertTrue(res.fallback_used)
+                self.assertEqual(res.choice, "log")
+                self.assertIn("HTTP 400:", res.error or "")
+                self.assertIn("invalid model slug", res.error or "")
+                self.assertIn('"max_tokens":16', captured["body"].replace(" ", ""))
             finally:
                 await client.aclose()
 

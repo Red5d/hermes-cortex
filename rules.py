@@ -181,6 +181,19 @@ async def evaluate_event(
     text = event.as_text()
     evals: list[RuleEvaluation] = []
     for rule in rules:
+        if _matches_force_escalate(rule, text):
+            evals.append(
+                RuleEvaluation(
+                    rule_id=rule.id,
+                    rule_name=rule.name,
+                    severity=rule.severity,
+                    action="escalate",
+                    via="force_escalate_regex",
+                    auto_investigate=rule.auto_investigate,
+                )
+            )
+            continue
+
         if not dry_run and not store.try_acquire_cooldown(
             rule.id, event.source, rule.cooldown_seconds, now=event.ts
         ):
@@ -191,19 +204,6 @@ async def evaluate_event(
                     severity=rule.severity,
                     action="discard",
                     via="cooldown_suppressed",
-                )
-            )
-            continue
-
-        if _matches_force_escalate(rule, text):
-            evals.append(
-                RuleEvaluation(
-                    rule_id=rule.id,
-                    rule_name=rule.name,
-                    severity=rule.severity,
-                    action="escalate",
-                    via="force_escalate_regex",
-                    auto_investigate=rule.auto_investigate,
                 )
             )
             continue
@@ -250,6 +250,19 @@ def evaluate_event_sync(
     text = event.as_text()
     evals: list[RuleEvaluation] = []
     for rule in rules:
+        if _matches_force_escalate(rule, text):
+            evals.append(
+                RuleEvaluation(
+                    rule_id=rule.id,
+                    rule_name=rule.name,
+                    severity=rule.severity,
+                    action="escalate",
+                    via="force_escalate_regex",
+                    auto_investigate=rule.auto_investigate,
+                )
+            )
+            continue
+
         if not dry_run and not store.try_acquire_cooldown(
             rule.id, event.source, rule.cooldown_seconds, now=event.ts
         ):
@@ -260,19 +273,6 @@ def evaluate_event_sync(
                     severity=rule.severity,
                     action="discard",
                     via="cooldown_suppressed",
-                )
-            )
-            continue
-
-        if _matches_force_escalate(rule, text):
-            evals.append(
-                RuleEvaluation(
-                    rule_id=rule.id,
-                    rule_name=rule.name,
-                    severity=rule.severity,
-                    action="escalate",
-                    via="force_escalate_regex",
-                    auto_investigate=rule.auto_investigate,
                 )
             )
             continue

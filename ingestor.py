@@ -30,14 +30,12 @@ class WebhookIngestor:
         host: str = "127.0.0.1",
         port: int = 8655,
         secret_lookup: Optional[Callable[[str], Optional[str]]] = None,
-        on_reconcile_hint: Optional[Callable[[], None]] = None,
     ):
         self.store = store
         self.on_event = on_event
         self.host = host
         self.port = int(port)
         self.secret_lookup = secret_lookup
-        self.on_reconcile_hint = on_reconcile_hint
         self._runner: Optional[web.AppRunner] = None
         self._site: Optional[web.TCPSite] = None
         self.bound_port: Optional[int] = None
@@ -49,12 +47,22 @@ class WebhookIngestor:
         return None
 
     def _verify_signature(self, request: web.Request, body: bytes, watcher: WatcherRecord) -> bool:
+        secret_env = str(watcher.config.get("secret_env") or "").strip()
+        inline_secret = str(watcher.config.get("secret") or "")
         secret: Optional[str] = None
-        if watcher.config.get("secret_env") and self.secret_lookup is not None:
-            secret = self.secret_lookup(str(watcher.config["secret_env"]))
-        if not secret and watcher.config.get("secret"):
-            secret = str(watcher.config["secret"])
-        if not secret:
+        if secret_env:
+            if self.secret_lookup is not None:
+                secret = self.secret_lookup(secret_env)
+            if not secret:
+                logger.warning(
+                    "Webhook route %r requires secret_env %r but it is unset/empty; failing closed",
+                    watcher.config.get("route_name"),
+                    secret_env,
+                )
+                return False
+        elif inline_secret:
+            secret = inline_secret
+        else:
             return True
 
         sig_header = (

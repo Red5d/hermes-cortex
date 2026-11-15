@@ -16,9 +16,9 @@ logger = logging.getLogger("cortex")
 
 def _default_shared_dir() -> Path:
     try:
-        from hermes_constants import get_hermes_home
+        from hermes_constants import get_process_hermes_home
 
-        return Path(get_hermes_home()) / "cortex"
+        return Path(get_process_hermes_home()) / "cortex"
     except Exception:
         return Path.home() / ".hermes" / "cortex"
 
@@ -39,13 +39,19 @@ def register(ctx: Any) -> None:
     store = CortexStore(db_path)
 
     raw_roots = ctx.get_config("allowed_log_roots", ["/var/log", "/opt/data/logs"]) or []
-    allowed_roots = [Path(str(p)).expanduser() for p in raw_roots]
+    allowed_roots: list[Path] = [Path(str(p)).expanduser() for p in raw_roots]
     try:
-        from hermes_constants import get_hermes_home
+        from hermes_constants import get_hermes_home, get_process_hermes_home
 
-        allowed_roots.append(Path(get_hermes_home()) / "logs")
-    except Exception:
-        pass
+        for candidate in (
+            Path(get_process_hermes_home()) / "logs",
+            Path(get_hermes_home()) / "logs",
+            shared_dir.parent / "logs",
+        ):
+            if candidate not in allowed_roots:
+                allowed_roots.append(candidate)
+    except Exception as exc:
+        logger.debug("failed to append Hermes log roots: %s", exc)
 
     decision_client = DecisionClient(
         backend=str(ctx.get_config("decision_backend", "http_decision")),
@@ -104,8 +110,8 @@ def register(ctx: Any) -> None:
                     if val:
                         origin[opt_key] = str(val)
                 store.set_meta("last_active_origin", origin)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("on_session_start origin capture failed: %s", exc)
 
     def _on_pre_gateway_dispatch(**kwargs: Any) -> None:
         event = kwargs.get("event")
@@ -115,8 +121,8 @@ def register(ctx: Any) -> None:
                 origin = source.to_dict()
                 if isinstance(origin, dict) and origin.get("platform") and origin.get("chat_id"):
                     store.set_meta("last_active_origin", origin)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("pre_gateway_dispatch origin capture failed: %s", exc)
         return None
 
     ctx.register_hook("on_session_start", _on_session_start)

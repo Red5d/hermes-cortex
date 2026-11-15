@@ -145,7 +145,7 @@ class CortexStore:
         wid = (watcher_id or "").strip() or f"w_{uuid.uuid4().hex[:10]}"
         now = time.time()
         with self._connect() as conn:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             try:
                 conn.execute(
                     """
@@ -188,7 +188,7 @@ class CortexStore:
     def set_watcher_enabled(self, watcher_id: str, enabled: Optional[bool] = None) -> Optional[WatcherRecord]:
         now = time.time()
         with self._connect() as conn:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             try:
                 row = conn.execute(
                     "SELECT id, type, config_json, enabled FROM watchers WHERE id = ?",
@@ -218,7 +218,7 @@ class CortexStore:
     def delete_watcher(self, watcher_id: str) -> bool:
         now = time.time()
         with self._connect() as conn:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             try:
                 cur = conn.execute("DELETE FROM watchers WHERE id = ?", (watcher_id,))
                 deleted = cur.rowcount > 0
@@ -258,7 +258,7 @@ class CortexStore:
         rid = (rule_id or "").strip() or f"r_{uuid.uuid4().hex[:10]}"
         now = time.time()
         with self._connect() as conn:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             try:
                 conn.execute(
                     """
@@ -332,7 +332,7 @@ class CortexStore:
     def set_rule_enabled(self, rule_id: str, enabled: Optional[bool] = None) -> Optional[RuleRecord]:
         now = time.time()
         with self._connect() as conn:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             try:
                 row = conn.execute("SELECT * FROM rules WHERE id = ?", (rule_id,)).fetchone()
                 if not row:
@@ -427,7 +427,7 @@ class CortexStore:
     ) -> int:
         now = time.time() if ts is None else float(ts)
         with self._connect() as conn:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             try:
                 cur = conn.execute(
                     """

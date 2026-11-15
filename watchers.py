@@ -321,8 +321,16 @@ class WatcherManager:
             while not self._stop_event.is_set():
                 try:
                     resp = await client.request(method, url, headers=headers)
-                    body_text = resp.text[:4000]
-                    digest = hashlib.sha256(body_text.encode("utf-8", errors="replace")).hexdigest()
+                    full_text = resp.text or ""
+                    body_text = full_text[:4000]
+                    if emit_on == "json_change":
+                        try:
+                            canonical = json.dumps(resp.json(), sort_keys=True, separators=(",", ":"))
+                        except ValueError:
+                            canonical = full_text
+                        digest = hashlib.sha256(canonical.encode("utf-8", errors="replace")).hexdigest()
+                    else:
+                        digest = hashlib.sha256(full_text.encode("utf-8", errors="replace")).hexdigest()
                     should_emit = (
                         emit_on == "always"
                         or (emit_on == "status_error" and resp.status_code >= 400)
@@ -342,13 +350,17 @@ class WatcherManager:
                             )
                         )
                 except Exception as exc:
-                    await self.on_event(
-                        CortexEvent(
-                            source=source,
-                            payload={"url": url, "error": f"{type(exc).__name__}: {exc}"},
-                            metadata={"watcher_id": rec.id},
+                    if emit_on in ("always", "status_error") or (
+                        emit_on == "json_change" and last_digest != "ERROR"
+                    ):
+                        last_digest = "ERROR"
+                        await self.on_event(
+                            CortexEvent(
+                                source=source,
+                                payload={"url": url, "error": f"{type(exc).__name__}: {exc}"},
+                                metadata={"watcher_id": rec.id},
+                            )
                         )
-                    )
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=interval_s)
                 except asyncio.TimeoutError:
